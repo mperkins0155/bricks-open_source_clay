@@ -482,8 +482,13 @@ if (config.timeout < 5000 || config.timeout > 60000) {
   return 'Error: Timeout must be between 5-60 seconds';
 }
 
-// API endpoint - using localhost:3000 for dev server
-const apiEndpoint = 'http://localhost:3000/api/puppeteer';
+// API endpoint - derive host from the page so it works over Tailscale / LAN,
+// not just localhost. Falls back to localhost outside a browser.
+const apiHost = (typeof window !== 'undefined' && window.location && window.location.hostname)
+  ? window.location.hostname
+  : 'localhost';
+const apiBase = 'http://' + apiHost + ':3000';
+const apiEndpoint = apiBase + '/api/puppeteer';
 logToUI('📡 API endpoint: ' + apiEndpoint);
 
 // Submit job to queue with enhanced error handling
@@ -591,7 +596,7 @@ async function pollForResult(jobId, startTime) {
     try {
       console.log(\`🔄 Poll attempt \${attempts}/\${maxAttempts}\`);
       
-      const statusEndpoint = \`http://localhost:3000/api/puppeteer/status/\${jobId}\`;
+      const statusEndpoint = \`\${apiBase}/api/puppeteer/status/\${jobId}\`;
       const response = await fetch(statusEndpoint);
       
       const pollResponseTime = Date.now() - pollStartTime;
