@@ -271,6 +271,16 @@ const filterThinkingContent = (content) => {
   return filtered;
 };
 
+// Normalise model output for a spreadsheet cell: drop reasoning blocks and
+// unwrap a single surrounding markdown code fence (\`\`\`json ... \`\`\`).
+const cleanOutput = (content) => {
+  if (!content || typeof content !== 'string') return content;
+  let out = filterThinkingContent(content);
+  const fence = out.trim().match(/^\`\`\`[a-zA-Z0-9_-]*\\s*\\n([\\s\\S]*?)\\n?\`\`\`$/);
+  if (fence) out = fence[1].trim();
+  return out.trim();
+};
+
 // Use Promise-based approach with timeout control
 console.log('🚀 Making API request with model:', '${model}');
 console.log('📝 Prompt:', \`${fullPrompt.replace(/`/g, '\\`')}\`);
@@ -288,10 +298,34 @@ ${authHeader}
   },
   body: JSON.stringify(requestBody)
 })
-.then(response => {
+.then(async response => {
   console.log('📡 Response status:', response.status);
   console.log('📡 Response headers:', Object.fromEntries(response.headers.entries()));
-  return response.text();
+  const responseText = await response.text();
+
+  // On rate-limit / server errors, surface the server's Retry-After so the
+  // enrichment runner can wait the requested time instead of guessing.
+  if (!response.ok) {
+    let retryAfterMs = null;
+    const ra = response.headers.get('retry-after');
+    const reset = response.headers.get('x-ratelimit-reset-requests')
+      || response.headers.get('x-ratelimit-reset-tokens')
+      || response.headers.get('x-ratelimit-reset');
+    if (ra) {
+      const n = parseFloat(ra);
+      if (!isNaN(n)) retryAfterMs = n < 1000 ? Math.round(n * 1000) : Math.round(n);
+    } else if (reset) {
+      const m = String(reset).match(/([0-9.]+)\\s*(ms|s|m)?/);
+      if (m) {
+        const n = parseFloat(m[1]);
+        const unit = m[2] || 's';
+        retryAfterMs = Math.round(unit === 'ms' ? n : unit === 'm' ? n * 60000 : n * 1000);
+      }
+    }
+    const marker = retryAfterMs != null ? ' [retryAfterMs=' + retryAfterMs + ']' : '';
+    throw new Error('API HTTP ' + response.status + marker + ': ' + responseText.substring(0, 200));
+  }
+  return responseText;
 })
 .then(responseText => {
   console.log('📡 Raw response text:', responseText.substring(0, 500) + '...');
@@ -320,7 +354,7 @@ ${authHeader}
       const result = candidate.content.parts[0].text;
       console.log('✅ Found content in Gemini structure');
       console.log('📄 Result preview:', result.substring(0, 200) + '...');
-      return result;
+      return cleanOutput(result);
     }
   }
 
@@ -333,8 +367,8 @@ ${authHeader}
     // Apply content filtering for reasoning models
     ${!thinkingMode && isReasoningModel ? 'result = filterThinkingContent(result);' : 'console.log("🧠 Keeping original content");'}
     console.log('📄 Final result preview:', result.substring(0, 200) + '...');
-    
-    return result;
+
+    return cleanOutput(result);
   }
 ${ollamaFallback}
 
