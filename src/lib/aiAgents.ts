@@ -1,4 +1,5 @@
 import { isGeminiModel, sendGeminiChatRequest } from './gemini';
+import { extractJson } from './enrichment/cleanOutput';
 import type { AIProvider } from './constants/aiModels';
 
 interface AgentConfig {
@@ -294,7 +295,8 @@ REMEMBER: Output ONLY the JSON object, nothing else.`;
   }
   
   try {
-    return JSON.parse(rawCreatorContent) as MessageResult;
+    // extractJson tolerates ```json fences and surrounding prose.
+    return extractJson<MessageResult>(rawCreatorContent);
   } catch (parseError) {
     console.error('JSON parse error for creator response:', parseError);
     console.error('Raw content that failed to parse:', rawCreatorContent);
@@ -418,8 +420,8 @@ REMEMBER: Output ONLY the JSON object, nothing else.`;
   }
   
   try {
-    const feedback = JSON.parse(rawRoleplayContent) as FeedbackResult;
-    
+    const feedback = extractJson<FeedbackResult>(rawRoleplayContent);
+
     // Ensure feedback has required fields
     if (typeof feedback.approved === 'undefined') {
       feedback.approved = false;

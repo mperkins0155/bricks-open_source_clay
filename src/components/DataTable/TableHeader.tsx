@@ -1,4 +1,4 @@
-import { Settings, Play, ChevronUp, ChevronDown, Trash2, Loader2 } from 'lucide-react';
+import { Settings, Play, ChevronUp, ChevronDown, Trash2, Loader2, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { 
@@ -23,6 +23,7 @@ interface TableHeaderProps {
   onSort: (column: string) => void;
   onEditFormula: (column: string) => void;
   onExecuteFormula: (column: string) => void;
+  onRetryFailed?: (column: string) => void;
   onRemoveColumn: (column: string) => void;
   onSetColumnToRemove: (column: string | null) => void;
 }
@@ -41,6 +42,7 @@ export const TableHeader = ({
   onSort,
   onEditFormula,
   onExecuteFormula,
+  onRetryFailed,
   onRemoveColumn,
   onSetColumnToRemove,
 }: TableHeaderProps) => {
@@ -88,7 +90,20 @@ export const TableHeader = ({
               <Play className="h-3 w-3" />
             )}
           </Button>
-          
+
+          {onRetryFailed && (
+            <Button
+              variant="ghost"
+              size="sm"
+              title="Re-run only empty / failed cells"
+              onClick={() => onRetryFailed(header)}
+              disabled={!hasFormula || isExecuting}
+              className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+            >
+              <RotateCcw className="h-3 w-3" />
+            </Button>
+          )}
+
           <AlertDialog open={columnToRemove === header} onOpenChange={(open) => !open && onSetColumnToRemove(null)}>
             <AlertDialogTrigger asChild>
               <Button

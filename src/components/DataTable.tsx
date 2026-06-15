@@ -14,6 +14,9 @@ import { TableHeader } from './DataTable/TableHeader';
 import { TableCell } from './DataTable/TableCell';
 import { CellDetailsSheet } from './DataTable/CellDetailsSheet';
 import { AddColumnDialog } from './DataTable/AddColumnDialog';
+import { RecipeDialog } from './DataTable/RecipeDialog';
+import { toast } from '@/hooks/use-toast';
+import type { ResolvedRecipeColumn } from '@/lib/enrichment/recipes';
 
 interface DataTableProps {
   onEditFormula: (column: string) => void;
@@ -32,11 +35,19 @@ interface DataTableProps {
  */
 export const DataTable = ({ onEditFormula }: DataTableProps) => {
   // Store data access
-  const { headers, rows, getFormula } = useDataStore();
+  const { headers, rows, getFormula, addColumn, setFormula } = useDataStore();
   
   // Custom Hooks - Business Logic
   const { sortColumn, sortDirection, sortedRows, handleSort } = useTableSort(rows);
-  const { executingColumn, executingCells, executeFormula, executeCellFormula } = useFormulaExecution();
+  const {
+    executingColumn,
+    executingCells,
+    progress,
+    executeFormula,
+    executeFailedCells,
+    cancelExecution,
+    executeCellFormula,
+  } = useFormulaExecution();
   const { handleCSVUpload } = useCSVUpload();
   const { 
     showAddColumnDialog, 
@@ -51,10 +62,23 @@ export const DataTable = ({ onEditFormula }: DataTableProps) => {
   
   // Local UI state for cell details viewer
   const [selectedCell, setSelectedCell] = useState<{row: number, column: string, content: string} | null>(null);
+  const [showRecipes, setShowRecipes] = useState(false);
 
   // Handler for cell click to show details
   const handleCellClick = (rowIndex: number, columnName: string, content: string) => {
     setSelectedCell({ row: rowIndex, column: columnName, content: content || '' });
+  };
+
+  // Apply a recipe: create each output column (if new) and set its formula.
+  const handleApplyRecipe = (columns: ResolvedRecipeColumn[]) => {
+    columns.forEach((col) => {
+      if (!headers.includes(col.name)) addColumn(col.name);
+      setFormula(col.name, col.formula);
+    });
+    toast({
+      title: 'Recipe Applied',
+      description: `${columns.length} column${columns.length > 1 ? 's' : ''} added. Hit ▶ on each to run.`,
+    });
   };
 
   // Early return if no data
@@ -65,11 +89,42 @@ export const DataTable = ({ onEditFormula }: DataTableProps) => {
   return (
     <Card className="overflow-hidden">
       {/* Toolbar with CSV upload and Add Column actions */}
-      <TableToolbar 
+      <TableToolbar
         onUploadCSV={handleCSVUpload}
         onAddColumn={() => setShowAddColumnDialog(true)}
+        onOpenRecipes={() => setShowRecipes(true)}
       />
-      
+
+      {/* Live enrichment progress for the running column */}
+      {progress && progress.total > 0 && (
+        <div className="px-4 py-2 border-b border-border bg-muted/30">
+          <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+            <span>
+              Enriching{executingColumn ? ` "${executingColumn}"` : ''}… {progress.completed}/{progress.total}
+            </span>
+            <div className="flex items-center gap-3">
+              <span>
+                {progress.succeeded} ok
+                {progress.failed > 0 ? ` · ${progress.failed} failed` : ''}
+                {progress.skipped > 0 ? ` · ${progress.skipped} skipped` : ''}
+              </span>
+              <button
+                onClick={cancelExecution}
+                className="font-medium text-destructive hover:underline"
+              >
+                Stop
+              </button>
+            </div>
+          </div>
+          <div className="h-1.5 w-full rounded-full bg-border overflow-hidden">
+            <div
+              className="h-full bg-primary transition-all duration-200"
+              style={{ width: `${Math.round((progress.completed / progress.total) * 100)}%` }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Horizontal scroll container with mirrored scroll bars */}
       <div className="relative">
         {/* Top scroll bar - mirrored to main table */}
@@ -111,6 +166,7 @@ export const DataTable = ({ onEditFormula }: DataTableProps) => {
                   onSort={handleSort}
                   onEditFormula={onEditFormula}
                   onExecuteFormula={executeFormula}
+                  onRetryFailed={executeFailedCells}
                   onRemoveColumn={handleRemoveColumn}
                   onSetColumnToRemove={setColumnToRemove}
                 />
@@ -169,6 +225,13 @@ export const DataTable = ({ onEditFormula }: DataTableProps) => {
         onClose={() => setShowAddColumnDialog(false)}
         onColumnNameChange={setNewColumnName}
         onAddColumn={handleAddColumn}
+      />
+
+      <RecipeDialog
+        open={showRecipes}
+        onOpenChange={setShowRecipes}
+        headers={headers}
+        onApply={handleApplyRecipe}
       />
     </Card>
   );
