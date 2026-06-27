@@ -63,7 +63,9 @@ export const TableToolbar = ({ onUploadCSV, onAddColumn, onOpenRecipes }: TableT
                   min={1}
                   max={50}
                   value={settings.concurrency}
-                  onChange={(e) => update({ concurrency: Number(e.target.value) })}
+                  onChange={(e) =>
+                    Number.isFinite(e.target.valueAsNumber) && update({ concurrency: e.target.valueAsNumber })
+                  }
                 />
                 <p className="text-xs text-muted-foreground">
                   Lower = gentler on API rate limits. 3–5 is safe for OpenAI; raise for local Ollama.
